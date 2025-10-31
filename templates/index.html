@@ -10,52 +10,63 @@
                 <h5 class="mb-0">API Explorer</h5>
             </div>
             <div class="card-body">
-                <div class="mb-3">
-                    <label for="apiCategory" class="form-label">Category</label>
-                    <select class="form-select" id="apiCategory">
-                        <option value="clusters">Clusters</option>
-                        <option value="jobs">Jobs</option>
-                        <option value="jobs-runs">Job Runs</option>
-                        <option value="workspace">Workspace</option>
-                        <option value="workspaces">Workspaces</option>
-                        <option value="sql" selected>SQL Warehouses</option>
-                        <option value="users">Users</option>
-                        <option value="groups">Groups</option>
-                        <option value="current-user">Current User</option>
-                        <option value="pipelines">Pipelines</option>
-                        <option value="repos">Repos</option>
-                        <option value="permissions">Permissions</option>
-                        <option value="notebooks">Notebooks</option>
-                        <option value="libraries">Libraries</option>
-                        <option value="dbt">DBT Projects</option>
-                        <option value="secrets">Secrets</option>
-                        <option value="instance-pools">Instance Pools</option>
-                        <option value="cluster-policies">Cluster Policies</option>
-                    </select>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="apiCategory" class="form-label">Category</label>
+                            <select class="form-select" id="apiCategory">
+                                <option value="clusters">Clusters</option>
+                                <option value="jobs">Jobs</option>
+                                <option value="jobs-runs">Job Runs</option>
+                                <option value="workspace">Workspace</option>
+                                <option value="workspaces">Workspaces</option>
+                                <option value="sql" selected>SQL Warehouses</option>
+                                <option value="users">Users</option>
+                                <option value="groups">Groups</option>
+                                <option value="current-user">Current User</option>
+                                <option value="pipelines">Pipelines</option>
+                                <option value="repos">Repos</option>
+                                <option value="permissions">Permissions</option>
+                                <option value="notebooks">Notebooks</option>
+                                <option value="libraries">Libraries</option>
+                                <option value="dbt">DBT Projects</option>
+                                <option value="secrets">Secrets</option>
+                                <option value="instance-pools">Instance Pools</option>
+                                <option value="cluster-policies">Cluster Policies</option>
+                            </select>
+                        </div>
+                        <div class="mb-3" id="paramsContainer">
+                            <!-- Dynamic parameters will be added here -->
+                        </div>
+                        <button class="btn btn-primary" id="callApiBtn" onclick="callApi()">Call API</button>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="apiAction" class="form-label">Action</label>
+                            <select class="form-select" id="apiAction">
+                                <option value="list-warehouses" selected>List Warehouses</option>
+                                <option value="get-warehouse">Get Warehouse</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="apiTimeout" class="form-label">Timeout (seconds)</label>
+                            <input type="number" class="form-control" id="apiTimeout" value="35" min="1" max="300" step="1">
+                            <small class="form-text text-muted">Maximum time to wait for API response (1-300 seconds)</small>
+                        </div>
+                    </div>
                 </div>
-                <div class="mb-3">
-                    <label for="apiAction" class="form-label">Action</label>
-                    <select class="form-select" id="apiAction">
-                        <option value="list-warehouses" selected>List Warehouses</option>
-                        <option value="get-warehouse">Get Warehouse</option>
-                    </select>
-                </div>
-                <div class="mb-3" id="paramsContainer">
-                    <!-- Dynamic parameters will be added here -->
-                </div>
-                <div class="mb-3">
-                    <label for="apiTimeout" class="form-label">Timeout (seconds)</label>
-                    <input type="number" class="form-control" id="apiTimeout" value="35" min="1" max="300" step="1">
-                    <small class="form-text text-muted">Maximum time to wait for API response (1-300 seconds)</small>
-                </div>
-                <button class="btn btn-primary" id="callApiBtn" onclick="callApi()">Call API</button>
             </div>
         </div>
 
         <div class="card shadow">
             <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">API Response</h5>
-                <button class="btn btn-sm btn-light" onclick="clearResponse()">Clear</button>
+                <div>
+                    <button class="btn btn-sm btn-light me-2" onclick="exportResponse()" id="exportResponseBtn" title="Export to text file">
+                        📥 Export
+                    </button>
+                    <button class="btn btn-sm btn-light" onclick="clearResponse()">Clear</button>
+                </div>
             </div>
             <div class="card-body">
                 <div id="timeoutIndicator" class="mb-2" style="display: none;">
@@ -731,6 +742,62 @@ async function callApi() {
 async function clearResponse() {
     await logUIActivity('RESPONSE_CLEARED', {});
     document.getElementById('apiResponse').innerHTML = '<code>Response cleared.</code>';
+}
+
+function exportResponse() {
+    const responseElement = document.getElementById('apiResponse');
+    if (!responseElement) {
+        alert('No response to export');
+        return;
+    }
+    
+    // Get the text content from the code element
+    const codeElement = responseElement.querySelector('code');
+    let textContent = '';
+    
+    if (codeElement) {
+        // Get plain text without HTML tags
+        textContent = codeElement.textContent || codeElement.innerText || '';
+    } else {
+        // Fallback: get text from the pre element
+        textContent = responseElement.textContent || responseElement.innerText || '';
+    }
+    
+    // Check if there's actual content to export
+    if (!textContent || textContent.trim() === '' || textContent.includes('No API call made yet') || textContent.includes('Response cleared')) {
+        alert('No API response to export. Please make an API call first.');
+        return;
+    }
+    
+    // Remove timeout message comment if present (lines starting with // Timeout used:)
+    let exportContent = textContent;
+    const lines = exportContent.split('\n');
+    const filteredLines = lines.filter(line => !line.trim().startsWith('// Timeout used:'));
+    exportContent = filteredLines.join('\n');
+    
+    // Create a filename with timestamp
+    const now = new Date();
+    const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const category = document.getElementById('apiCategory')?.value || 'api';
+    const action = document.getElementById('apiAction')?.value || 'response';
+    const filename = `databricks-api-${category}-${action}-${timestamp}.json`;
+    
+    // Create blob and download as JSON
+    const blob = new Blob([exportContent], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    // Log UI activity
+    logUIActivity('RESPONSE_EXPORTED', {
+        filename: filename,
+        size: exportContent.length
+    });
 }
 
 function loadLogs() {
