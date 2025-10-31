@@ -1,4 +1,4 @@
-# Databricks Flask API Explorer
+# Databricks API Explorer
 
 A Flask web application that provides SSO authentication to Databricks workspaces and allows you to interact with Databricks APIs through a user-friendly web interface.
 
@@ -20,7 +20,7 @@ A Flask web application that provides SSO authentication to Databricks workspace
 
 1. Clone or navigate to the project directory:
 ```bash
-cd databricks-flask-app
+cd databricks-api-explorer
 ```
 
 2. Create a virtual environment (recommended):
@@ -97,7 +97,7 @@ All logs are saved to `logs/app.log` in the project directory. The log file cont
 ## Project Structure
 
 ```
-databricks-flask-app/
+databricks-api-explorer/
 ├── app.py                 # Main Flask application
 ├── requirements.txt       # Python dependencies
 ├── README.md             # This file

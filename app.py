@@ -1,5 +1,5 @@
 """
-Flask web application for Databricks API access with SSO authentication.
+Databricks API Explorer - Flask web application for Databricks API access with SSO authentication.
 """
 
 import os
@@ -1364,7 +1364,7 @@ def reauthenticate():
 
 if __name__ == '__main__':
     logger.info("=" * 80)
-    logger.info("Starting Databricks Flask API App")
+    logger.info("Starting Databricks API Explorer")
     logger.info(f"Default workspace: {DEFAULT_WORKSPACE_URL}")
     logger.info(f"Log file: {LOG_FILE}")
     logger.info("=" * 80)

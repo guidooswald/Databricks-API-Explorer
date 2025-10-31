@@ -1,5 +1,5 @@
 #!/bin/bash
-# Startup script for Databricks Flask API Explorer
+# Startup script for Databricks API Explorer
 
 # Check if virtual environment exists
 if [ ! -d "venv" ]; then
