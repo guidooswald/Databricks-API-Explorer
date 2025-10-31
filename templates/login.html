@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Login - Databricks API Explorer{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">Databricks SSO Authentication</h4>
+            </div>
+            <div class="card-body">
+                <form id="loginForm">
+                    <div class="mb-3">
+                        <label for="workspaceUrl" class="form-label">Workspace URL</label>
+                        <input type="text" class="form-control" id="workspaceUrl" 
+                               value="{{ workspace_url }}" placeholder="https://your-workspace.cloud.databricks.com">
+                        <small class="form-text text-muted">Enter your Databricks workspace URL</small>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg" id="loginBtn">
+                            <span class="spinner-border spinner-border-sm d-none" id="loginSpinner" role="status"></span>
+                            Authenticate with SSO
+                        </button>
+                    </div>
+                </form>
+                <div id="loginError" class="alert alert-danger mt-3 d-none"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.getElementById('loginForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const loginBtn = document.getElementById('loginBtn');
+    const spinner = document.getElementById('loginSpinner');
+    const errorDiv = document.getElementById('loginError');
+    
+    loginBtn.disabled = true;
+    spinner.classList.remove('d-none');
+    errorDiv.classList.add('d-none');
+    
+    const workspaceUrl = document.getElementById('workspaceUrl').value.trim();
+    
+    try {
+        const response = await fetch('/auth/sso', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ workspace_url: workspaceUrl })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            window.location.href = '/';
+        } else {
+            errorDiv.textContent = data.error || 'Authentication failed';
+            errorDiv.classList.remove('d-none');
+        }
+    } catch (error) {
+        errorDiv.textContent = 'Error: ' + error.message;
+        errorDiv.classList.remove('d-none');
+    } finally {
+        loginBtn.disabled = false;
+        spinner.classList.add('d-none');
+    }
+});
+</script>
+{% endblock %}
+

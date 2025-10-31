@@ -1,0 +1,861 @@
+{% extends "base.html" %}
+
+{% block title %}Databricks API Explorer{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card shadow mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">API Explorer</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="apiCategory" class="form-label">Category</label>
+                    <select class="form-select" id="apiCategory">
+                        <option value="clusters">Clusters</option>
+                        <option value="jobs">Jobs</option>
+                        <option value="jobs-runs">Job Runs</option>
+                        <option value="workspace">Workspace</option>
+                        <option value="workspaces">Workspaces</option>
+                        <option value="sql" selected>SQL Warehouses</option>
+                        <option value="users">Users</option>
+                        <option value="groups">Groups</option>
+                        <option value="current-user">Current User</option>
+                        <option value="pipelines">Pipelines</option>
+                        <option value="repos">Repos</option>
+                        <option value="permissions">Permissions</option>
+                        <option value="notebooks">Notebooks</option>
+                        <option value="libraries">Libraries</option>
+                        <option value="dbt">DBT Projects</option>
+                        <option value="secrets">Secrets</option>
+                        <option value="instance-pools">Instance Pools</option>
+                        <option value="cluster-policies">Cluster Policies</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="apiAction" class="form-label">Action</label>
+                    <select class="form-select" id="apiAction">
+                        <option value="list-warehouses" selected>List Warehouses</option>
+                        <option value="get-warehouse">Get Warehouse</option>
+                    </select>
+                </div>
+                <div class="mb-3" id="paramsContainer">
+                    <!-- Dynamic parameters will be added here -->
+                </div>
+                <div class="mb-3">
+                    <label for="apiTimeout" class="form-label">Timeout (seconds)</label>
+                    <input type="number" class="form-control" id="apiTimeout" value="35" min="1" max="300" step="1">
+                    <small class="form-text text-muted">Maximum time to wait for API response (1-300 seconds)</small>
+                </div>
+                <button class="btn btn-primary" id="callApiBtn" onclick="callApi()">Call API</button>
+            </div>
+        </div>
+
+        <div class="card shadow">
+            <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">API Response</h5>
+                <button class="btn btn-sm btn-light" onclick="clearResponse()">Clear</button>
+            </div>
+            <div class="card-body">
+                <div id="timeoutIndicator" class="mb-2" style="display: none;">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <small class="text-muted">Timeout countdown:</small>
+                        <small class="text-muted" id="timeoutCountdown">0s</small>
+                    </div>
+                    <div class="progress" style="height: 6px;">
+                        <div id="timeoutProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 100%" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                </div>
+                <pre id="apiResponse" class="bg-light p-3 rounded" style="max-height: 400px; overflow-y: auto;"><code>No API call made yet. Select a category and action, then click "Call API".</code></pre>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card shadow" style="height: calc(100vh - 150px);">
+            <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Application Logs</h5>
+                <button class="btn btn-sm btn-light" onclick="clearLogs()">Clear Logs</button>
+            </div>
+            <div class="card-body p-0">
+                <div id="logContainer" class="log-container">
+                    <div class="text-center text-muted p-3">
+                        <div class="spinner-border spinner-border-sm" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <div class="mt-2">Loading logs...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let logAutoScroll = true;
+let logUpdateInterval = null;
+
+// Update API action options based on category
+document.getElementById('apiCategory').addEventListener('change', async function() {
+    const category = this.value;
+    await logUIActivity('CATEGORY_CHANGED', { category: category });
+    
+    const actionSelect = document.getElementById('apiAction');
+    const paramsContainer = document.getElementById('paramsContainer');
+    
+    // Clear params
+    paramsContainer.innerHTML = '';
+    
+    // Update actions based on category
+    actionSelect.innerHTML = '';
+    
+    // Comprehensive action lists for all categories
+    if (category === 'clusters') {
+        actionSelect.innerHTML = `
+            <option value="list">List</option>
+            <option value="get">Get</option>
+            <option value="list-node-types">List Node Types</option>
+            <option value="start">Start</option>
+            <option value="restart">Restart</option>
+            <option value="delete">Delete</option>
+            <option value="create">Create</option>
+        `;
+    } else if (category === 'jobs') {
+        actionSelect.innerHTML = `
+            <option value="list">List</option>
+            <option value="get">Get</option>
+            <option value="run-now">Run Now</option>
+            <option value="create">Create</option>
+            <option value="update">Update</option>
+            <option value="delete">Delete</option>
+        `;
+    } else if (category === 'jobs-runs') {
+        actionSelect.innerHTML = `
+            <option value="list">List Runs</option>
+            <option value="get">Get Run</option>
+            <option value="cancel">Cancel Run</option>
+            <option value="cancel-all">Cancel All Runs</option>
+            <option value="get-output">Get Run Output</option>
+        `;
+    } else if (category === 'workspace') {
+        actionSelect.innerHTML = `
+            <option value="list">List</option>
+            <option value="get-status">Get Status</option>
+            <option value="get">Get Content</option>
+            <option value="mkdirs">Create Directory</option>
+            <option value="import">Import</option>
+            <option value="export">Export</option>
+            <option value="delete">Delete</option>
+        `;
+    } else if (category === 'workspaces') {
+        actionSelect.innerHTML = '<option value="list" selected>List All Workspaces</option>';
+    } else if (category === 'sql' || category === 'warehouses') {
+        actionSelect.innerHTML = `
+            <option value="list" selected>List Warehouses</option>
+            <option value="get">Get Warehouse</option>
+            <option value="start">Start Warehouse</option>
+            <option value="stop">Stop Warehouse</option>
+            <option value="create">Create Warehouse</option>
+            <option value="update">Update Warehouse</option>
+            <option value="delete">Delete Warehouse</option>
+        `;
+    } else if (category === 'users') {
+        actionSelect.innerHTML = `
+            <option value="list">List</option>
+            <option value="get">Get</option>
+            <option value="create">Create</option>
+            <option value="update">Update</option>
+            <option value="delete">Delete</option>
+        `;
+    } else if (category === 'groups') {
+        actionSelect.innerHTML = `
+            <option value="list">List</option>
+            <option value="get">Get</option>
+            <option value="create">Create</option>
+            <option value="update">Update</option>
+            <option value="delete">Delete</option>
+        `;
+    } else if (category === 'current-user') {
+        actionSelect.innerHTML = '<option value="get">Get Current User</option>';
+    } else if (category === 'pipelines') {
+        actionSelect.innerHTML = `
+            <option value="list">List</option>
+            <option value="get">Get</option>
+            <option value="start">Start</option>
+            <option value="stop">Stop</option>
+            <option value="create">Create</option>
+            <option value="update">Update</option>
+            <option value="delete">Delete</option>
+        `;
+    } else if (category === 'repos') {
+        actionSelect.innerHTML = `
+            <option value="list">List</option>
+            <option value="get">Get</option>
+            <option value="create">Create</option>
+            <option value="update">Update</option>
+            <option value="delete">Delete</option>
+        `;
+    } else if (category === 'permissions') {
+        actionSelect.innerHTML = `
+            <option value="get">Get Permissions</option>
+            <option value="set">Set Permissions</option>
+        `;
+    } else if (category === 'notebooks') {
+        actionSelect.innerHTML = `
+            <option value="list">List</option>
+            <option value="get">Get</option>
+        `;
+    } else if (category === 'libraries') {
+        actionSelect.innerHTML = `
+            <option value="list">List</option>
+            <option value="install">Install</option>
+            <option value="uninstall">Uninstall</option>
+        `;
+    } else if (category === 'dbt') {
+        actionSelect.innerHTML = `
+            <option value="list-projects">List Projects</option>
+            <option value="get-project">Get Project</option>
+        `;
+    } else if (category === 'secrets') {
+        actionSelect.innerHTML = `
+            <option value="list-scopes">List Scopes</option>
+            <option value="list-secrets">List Secrets</option>
+        `;
+    } else if (category === 'instance-pools') {
+        actionSelect.innerHTML = `
+            <option value="list">List</option>
+            <option value="get">Get</option>
+            <option value="create">Create</option>
+            <option value="update">Update</option>
+            <option value="delete">Delete</option>
+        `;
+    } else if (category === 'cluster-policies') {
+        actionSelect.innerHTML = `
+            <option value="list">List</option>
+            <option value="get">Get</option>
+            <option value="create">Create</option>
+            <option value="update">Update</option>
+            <option value="delete">Delete</option>
+        `;
+    }
+    
+    // Add parameters based on action
+    updateParams();
+});
+
+document.getElementById('apiAction').addEventListener('change', async function() {
+    await logUIActivity('ACTION_CHANGED', { action: this.value });
+    updateParams();
+});
+
+document.getElementById('apiTimeout').addEventListener('change', async function() {
+    await logUIActivity('TIMEOUT_CHANGED', { timeout: this.value });
+});
+
+function updateParams() {
+    const category = document.getElementById('apiCategory').value;
+    const action = document.getElementById('apiAction').value;
+    const paramsContainer = document.getElementById('paramsContainer');
+    
+    paramsContainer.innerHTML = '';
+    
+    // Helper function to add parameter input
+    function addParam(name, label, placeholder = '', defaultValue = '', type = 'text') {
+        const div = document.createElement('div');
+        div.className = 'mb-3';
+        div.innerHTML = `
+            <label for="param${name}" class="form-label">${label}</label>
+            <input type="${type}" class="form-control" id="param${name}" 
+                   value="${defaultValue}" placeholder="${placeholder || 'Enter ' + label}">
+        `;
+        paramsContainer.appendChild(div);
+    }
+    
+    // Helper function to add JSON textarea for complex parameters
+    function addJsonParam(name, label, placeholder = '{}') {
+        const div = document.createElement('div');
+        div.className = 'mb-3';
+        div.innerHTML = `
+            <label for="param${name}" class="form-label">${label} (JSON)</label>
+            <textarea class="form-control" id="param${name}" rows="4" 
+                      placeholder="${placeholder}">${placeholder}</textarea>
+            <small class="form-text text-muted">Enter JSON configuration</small>
+        `;
+        paramsContainer.appendChild(div);
+    }
+    
+    // Category: Clusters
+    if (category === 'clusters') {
+        if (action === 'list') {
+            addParam('max_items', 'Max Items (default: 100)', '100', '100', 'number');
+        } else if (action === 'get' || action === 'start' || action === 'restart' || action === 'delete') {
+            addParam('cluster_id', 'Cluster ID');
+        } else if (action === 'create') {
+            addJsonParam('cluster_config', 'Cluster Configuration', '{"cluster_name": "my-cluster", "spark_version": "13.3.x-scala2.12", "node_type_id": "Standard_D3_v2", "num_workers": 1}');
+        }
+    
+    // Category: Jobs
+    } else if (category === 'jobs') {
+        if (action === 'list') {
+            addParam('max_items', 'Max Items (default: 100, set higher to get more)', '100', '100', 'number');
+        } else if (action === 'get' || action === 'delete') {
+            addParam('job_id', 'Job ID', '', '', 'number');
+        } else if (action === 'run-now') {
+            addParam('job_id', 'Job ID', '', '', 'number');
+            addJsonParam('run_params', 'Run Parameters (optional)', '{}');
+        } else if (action === 'create') {
+            addJsonParam('job_config', 'Job Configuration', '{"name": "my-job", "tasks": []}');
+        } else if (action === 'update') {
+            addParam('job_id', 'Job ID', '', '', 'number');
+            addJsonParam('job_config', 'Job Configuration', '{}');
+        }
+    
+    // Category: Job Runs
+    } else if (category === 'jobs-runs') {
+        if (action === 'list') {
+            addParam('job_id', 'Job ID (optional)', '', '', 'number');
+            addParam('max_items', 'Max Items (default: 100)', '100', '100', 'number');
+        } else if (action === 'get' || action === 'cancel' || action === 'get-output') {
+            addParam('run_id', 'Run ID', '', '', 'number');
+        } else if (action === 'cancel-all') {
+            addParam('job_id', 'Job ID', '', '', 'number');
+        }
+    
+    // Category: Workspace
+    } else if (category === 'workspace') {
+        if (action === 'list') {
+            addParam('path', 'Path', '/', '/');
+        } else if (action === 'get-status' || action === 'get' || action === 'delete' || action === 'export') {
+            addParam('path', 'Path');
+            if (action === 'get' || action === 'export') {
+                addParam('format', 'Format (SOURCE, HTML, JUPYTER, DBC)', 'SOURCE');
+            }
+            if (action === 'delete') {
+                addParam('recursive', 'Recursive (true/false)', 'false');
+            }
+        } else if (action === 'mkdirs') {
+            addParam('path', 'Path');
+        } else if (action === 'import') {
+            addParam('path', 'Path');
+            addParam('content', 'Content (base64 encoded)');
+            addParam('format', 'Format (SOURCE, HTML, JUPYTER, DBC)', 'SOURCE');
+            addParam('language', 'Language (optional)', '');
+            addParam('overwrite', 'Overwrite (true/false)', 'false');
+        }
+    
+    // Category: SQL Warehouses
+    } else if (category === 'sql' || category === 'warehouses') {
+        if (action === 'get' || action === 'get-warehouse' || action === 'start' || action === 'stop' || action === 'delete') {
+            addParam('warehouse_id', 'Warehouse ID');
+        } else if (action === 'create') {
+            addJsonParam('warehouse_config', 'Warehouse Configuration', '{"name": "my-warehouse", "cluster_size": "Small", "auto_stop_mins": 10}');
+        } else if (action === 'update') {
+            addParam('warehouse_id', 'Warehouse ID');
+            addJsonParam('warehouse_config', 'Warehouse Configuration', '{}');
+        }
+    
+    // Category: Users
+    } else if (category === 'users') {
+        if (action === 'list') {
+            addParam('max_items', 'Max Items (default: 100)', '100', '100', 'number');
+        } else if (action === 'get' || action === 'update' || action === 'delete') {
+            addParam('user_id', 'User ID');
+            if (action === 'update') {
+                addJsonParam('user_config', 'User Configuration', '{}');
+            }
+        } else if (action === 'create') {
+            addJsonParam('user_config', 'User Configuration', '{"user_name": "user@example.com", "display_name": "User Name"}');
+        }
+    
+    // Category: Groups
+    } else if (category === 'groups') {
+        if (action === 'list') {
+            addParam('max_items', 'Max Items (default: 100)', '100', '100', 'number');
+        } else if (action === 'get' || action === 'update' || action === 'delete') {
+            addParam('group_id', 'Group ID');
+            if (action === 'update') {
+                addJsonParam('group_config', 'Group Configuration', '{}');
+            }
+        } else if (action === 'create') {
+            addJsonParam('group_config', 'Group Configuration', '{"display_name": "my-group"}');
+        }
+    
+    // Category: Pipelines
+    } else if (category === 'pipelines') {
+        if (action === 'list') {
+            addParam('max_items', 'Max Items (default: 100)', '100', '100', 'number');
+        } else if (action === 'get' || action === 'start' || action === 'stop' || action === 'delete') {
+            addParam('pipeline_id', 'Pipeline ID');
+        } else if (action === 'create') {
+            addJsonParam('pipeline_config', 'Pipeline Configuration', '{"name": "my-pipeline", "libraries": []}');
+        } else if (action === 'update') {
+            addParam('pipeline_id', 'Pipeline ID');
+            addJsonParam('pipeline_config', 'Pipeline Configuration', '{}');
+        }
+    
+    // Category: Repos
+    } else if (category === 'repos') {
+        if (action === 'list') {
+            addParam('max_items', 'Max Items (default: 100)', '100', '100', 'number');
+        } else if (action === 'get' || action === 'update' || action === 'delete') {
+            addParam('repo_id', 'Repo ID', '', '', 'number');
+            if (action === 'update') {
+                addJsonParam('repo_config', 'Repo Configuration', '{}');
+            }
+        } else if (action === 'create') {
+            addJsonParam('repo_config', 'Repo Configuration', '{"url": "https://github.com/user/repo.git", "provider": "gitHub"}');
+        }
+    
+    // Category: Workspaces
+    } else if (category === 'workspaces') {
+        if (action === 'list') {
+            addParam('max_items', 'Max Items (default: 100)', '100', '100', 'number');
+        }
+    
+    // Category: Permissions
+    } else if (category === 'permissions') {
+        addParam('request_object_id', 'Object ID');
+        addParam('request_object_type', 'Object Type (e.g., clusters, jobs, notebooks)');
+        if (action === 'set') {
+            addJsonParam('access_control_list', 'Access Control List', '[{"group_name": "users", "permission_level": "CAN_USE"}]');
+        }
+    
+    // Category: Notebooks
+    } else if (category === 'notebooks') {
+        if (action === 'list') {
+            addParam('path', 'Path', '/', '/');
+            addParam('max_items', 'Max Items (default: 100)', '100', '100', 'number');
+        } else if (action === 'get') {
+            addParam('path', 'Path');
+            addParam('format', 'Format (SOURCE, HTML, JUPYTER)', 'SOURCE');
+        }
+    
+    // Category: Libraries
+    } else if (category === 'libraries') {
+        if (action === 'list') {
+            addParam('cluster_id', 'Cluster ID');
+            addParam('max_items', 'Max Items (default: 100)', '100', '100', 'number');
+        } else if (action === 'install' || action === 'uninstall') {
+            addParam('cluster_id', 'Cluster ID');
+            addJsonParam('libraries', 'Libraries', '[{"pypi": {"package": "numpy"}}]');
+        }
+    
+    // Category: DBT
+    } else if (category === 'dbt') {
+        if (action === 'list-projects') {
+            addParam('max_items', 'Max Items (default: 100)', '100', '100', 'number');
+        } else if (action === 'get-project') {
+            addParam('project_id', 'Project ID');
+        }
+    
+    // Category: Secrets
+    } else if (category === 'secrets') {
+        if (action === 'list-scopes') {
+            addParam('max_items', 'Max Items (default: 100)', '100', '100', 'number');
+        } else if (action === 'list-secrets') {
+            addParam('scope', 'Scope Name');
+            addParam('max_items', 'Max Items (default: 100)', '100', '100', 'number');
+        }
+    
+    // Category: Instance Pools
+    } else if (category === 'instance-pools') {
+        if (action === 'list') {
+            addParam('max_items', 'Max Items (default: 100)', '100', '100', 'number');
+        } else if (action === 'get' || action === 'update' || action === 'delete') {
+            addParam('instance_pool_id', 'Instance Pool ID');
+            if (action === 'update') {
+                addJsonParam('pool_config', 'Pool Configuration', '{}');
+            }
+        } else if (action === 'create') {
+            addJsonParam('pool_config', 'Pool Configuration', '{"instance_pool_name": "my-pool", "node_type_id": "Standard_D3_v2"}');
+        }
+    
+    // Category: Cluster Policies
+    } else if (category === 'cluster-policies') {
+        if (action === 'list') {
+            addParam('max_items', 'Max Items (default: 100)', '100', '100', 'number');
+        } else if (action === 'get' || action === 'update' || action === 'delete') {
+            addParam('policy_id', 'Policy ID');
+            if (action === 'update') {
+                addJsonParam('policy_config', 'Policy Configuration', '{}');
+            }
+        } else if (action === 'create') {
+            addJsonParam('policy_config', 'Policy Configuration', '{"name": "my-policy", "definition": "{}"}');
+        }
+    }
+}
+
+let timeoutInterval = null;
+let timeoutStartTime = null;
+let timeoutDuration = 0;
+
+async function logUIActivity(activity, details = {}) {
+    try {
+        await fetch('/api/logs/ui-activity', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                activity: activity,
+                details: details,
+                timestamp: new Date().toISOString()
+            })
+        });
+    } catch (error) {
+        console.error('Failed to log UI activity:', error);
+    }
+}
+
+function startTimeoutIndicator(timeoutSeconds) {
+    const indicator = document.getElementById('timeoutIndicator');
+    const countdown = document.getElementById('timeoutCountdown');
+    const progressBar = document.getElementById('timeoutProgressBar');
+    
+    if (!indicator || !countdown || !progressBar) return;
+    
+    indicator.style.display = 'block';
+    timeoutDuration = timeoutSeconds;
+    timeoutStartTime = Date.now();
+    let elapsed = 0;
+    
+    // Clear any existing interval
+    if (timeoutInterval) {
+        clearInterval(timeoutInterval);
+    }
+    
+    timeoutInterval = setInterval(() => {
+        elapsed = Math.floor((Date.now() - timeoutStartTime) / 1000);
+        const remaining = Math.max(0, timeoutDuration - elapsed);
+        const percentage = Math.max(0, (remaining / timeoutDuration) * 100);
+        
+        countdown.textContent = `${remaining}s`;
+        progressBar.style.width = `${percentage}%`;
+        
+        // Change color based on remaining time
+        if (percentage < 20) {
+            progressBar.className = 'progress-bar progress-bar-striped progress-bar-animated bg-danger';
+        } else if (percentage < 50) {
+            progressBar.className = 'progress-bar progress-bar-striped progress-bar-animated bg-warning';
+        } else {
+            progressBar.className = 'progress-bar progress-bar-striped progress-bar-animated bg-primary';
+        }
+        
+        if (remaining <= 0) {
+            clearInterval(timeoutInterval);
+            timeoutInterval = null;
+        }
+    }, 100); // Update every 100ms for smooth animation
+}
+
+function stopTimeoutIndicator() {
+    if (timeoutInterval) {
+        clearInterval(timeoutInterval);
+        timeoutInterval = null;
+    }
+    const indicator = document.getElementById('timeoutIndicator');
+    if (indicator) {
+        indicator.style.display = 'none';
+    }
+    const progressBar = document.getElementById('timeoutProgressBar');
+    if (progressBar) {
+        progressBar.style.width = '100%';
+        progressBar.className = 'progress-bar progress-bar-striped progress-bar-animated bg-primary';
+    }
+}
+
+async function callApi() {
+    console.log('callApi() called');
+    
+    const category = document.getElementById('apiCategory').value;
+    const action = document.getElementById('apiAction').value;
+    const timeout = parseInt(document.getElementById('apiTimeout').value) || 35;
+    
+    // Log UI activity
+    await logUIActivity('API_CALL_INITIATED', {
+        category: category,
+        action: action,
+        timeout: timeout
+    });
+    
+    try {
+        // Check authentication first
+        const authResponse = await fetch('/api/user-info');
+        const authData = await authResponse.json();
+        console.log('Auth check:', authData);
+        
+        if (!authData.authenticated) {
+            await logUIActivity('API_CALL_FAILED', { reason: 'Not authenticated' });
+            alert('You are not authenticated. Please re-authenticate using the "Re-authenticate" button.');
+            return;
+        }
+        
+        const responseDiv = document.getElementById('apiResponse');
+        const callApiBtn = document.getElementById('callApiBtn');
+        
+        console.log('API call:', category, action, timeout);
+        
+        if (!callApiBtn) {
+            console.error('Call API button not found!');
+            alert('Error: Call API button not found. Please refresh the page.');
+            return;
+        }
+        
+        // Disable button during API call
+        callApiBtn.disabled = true;
+        callApiBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Calling...';
+        responseDiv.innerHTML = `<code>Calling API... (timeout: ${timeout}s)</code>`;
+        
+        // Start timeout indicator
+        startTimeoutIndicator(timeout);
+        
+        // Collect parameters
+        const params = {};
+        const paramInputs = document.querySelectorAll('#paramsContainer input, #paramsContainer textarea');
+        paramInputs.forEach(input => {
+            const key = input.id.replace('param', '').replace(/([A-Z])/g, '_$1').toLowerCase();
+            if (input.value.trim()) {
+                // Try to parse JSON for textarea fields or if value looks like JSON
+                if (input.tagName === 'TEXTAREA' || (input.value.trim().startsWith('{') || input.value.trim().startsWith('['))) {
+                    try {
+                        params[key] = JSON.parse(input.value.trim());
+                    } catch (e) {
+                        // If JSON parsing fails, use as string
+                        params[key] = input.value.trim();
+                    }
+                } else {
+                    // For regular inputs, try to convert numbers
+                    const value = input.value.trim();
+                    if (input.type === 'number' || /^\d+$/.test(value)) {
+                        params[key] = parseInt(value, 10);
+                    } else if (value === 'true' || value === 'false') {
+                        params[key] = value === 'true';
+                    } else {
+                        params[key] = value;
+                    }
+                }
+            }
+        });
+        
+        // Add timeout to params
+        params['timeout'] = timeout;
+        
+        const url = `/api/${category}/${action}`;
+        const options = {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        };
+        
+        console.log('Fetching:', url, params);
+        
+        const queryParams = new URLSearchParams(params);
+        const startTime = Date.now();
+        const response = await fetch(`${url}?${queryParams}`, options);
+        const duration = Math.floor((Date.now() - startTime) / 1000);
+        
+        console.log('Response status:', response.status);
+        
+        // Stop timeout indicator
+        stopTimeoutIndicator();
+        
+        let data;
+        try {
+            data = await response.json();
+        } catch (jsonError) {
+            const text = await response.text();
+            console.error('JSON parse error:', jsonError, 'Response text:', text);
+            await logUIActivity('API_CALL_FAILED', {
+                reason: 'Invalid JSON response',
+                status: response.status
+            });
+            responseDiv.innerHTML = `<code>Error: Invalid JSON response\nStatus: ${response.status}\nResponse: ${text}</code>`;
+            callApiBtn.disabled = false;
+            callApiBtn.innerHTML = 'Call API';
+            return;
+        }
+        
+        console.log('Response data:', data);
+        
+        // Check if authentication error occurred
+        if (response.status === 401 || (data.error && data.error.includes('authenticated'))) {
+            await logUIActivity('API_CALL_FAILED', { reason: 'Authentication expired' });
+            alert('Authentication expired. Please re-authenticate.');
+            await checkAuthStatus();
+            return;
+        }
+        
+        // Log successful API call
+        await logUIActivity('API_CALL_COMPLETED', {
+            category: category,
+            action: action,
+            status: response.status,
+            duration: duration,
+            success: data.success || false
+        });
+        
+        // Format response with timeout info if present
+        let responseText = JSON.stringify(data, null, 2);
+        if (data.timeout) {
+            responseText = `// Timeout used: ${data.timeout}s\n${responseText}`;
+        }
+        responseDiv.innerHTML = `<code>${responseText}</code>`;
+    } catch (error) {
+        console.error('Error in callApi:', error);
+        stopTimeoutIndicator();
+        await logUIActivity('API_CALL_ERROR', {
+            error: error.message,
+            category: category,
+            action: action
+        });
+        const responseDiv = document.getElementById('apiResponse');
+        if (responseDiv) {
+            responseDiv.innerHTML = `<code>Error: ${error.message}\n\nStack: ${error.stack}</code>`;
+        }
+        alert('Error calling API: ' + error.message);
+    } finally {
+        // Re-enable button
+        const callApiBtn = document.getElementById('callApiBtn');
+        if (callApiBtn) {
+            callApiBtn.disabled = false;
+            callApiBtn.innerHTML = 'Call API';
+        }
+    }
+}
+
+async function clearResponse() {
+    await logUIActivity('RESPONSE_CLEARED', {});
+    document.getElementById('apiResponse').innerHTML = '<code>Response cleared.</code>';
+}
+
+function loadLogs() {
+    fetch('/api/logs')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayLogs(data.logs);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading logs:', error);
+        });
+}
+
+function displayLogs(logs) {
+    const container = document.getElementById('logContainer');
+    
+    if (logs.length === 0) {
+        container.innerHTML = '<div class="text-center text-muted p-3">No logs yet.</div>';
+        return;
+    }
+    
+    let html = '<div class="log-entries">';
+    logs.forEach(log => {
+        const logClass = getLogClass(log);
+        html += `<div class="log-entry ${logClass}">${escapeHtml(log)}</div>`;
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
+    
+    if (logAutoScroll) {
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
+function getLogClass(log) {
+    if (log.includes('[UI]')) return 'log-ui';
+    if (log.includes('[AUTH]')) return 'log-auth';
+    if (log.includes('[API]')) return 'log-api';
+    if (log.includes('ERROR') || log.includes('Error')) return 'log-error';
+    if (log.includes('SUCCESS')) return 'log-success';
+    return '';
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+async function clearLogs() {
+    if (!confirm('Are you sure you want to clear all logs?')) {
+        return;
+    }
+    
+    await logUIActivity('LOGS_CLEARED', {});
+    
+    try {
+        const response = await fetch('/api/logs/clear', {
+            method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            loadLogs();
+        } else {
+            alert('Error clearing logs: ' + data.error);
+        }
+    } catch (error) {
+        alert('Error clearing logs: ' + error.message);
+    }
+}
+
+// Auto-refresh logs every 2 seconds
+logUpdateInterval = setInterval(loadLogs, 2000);
+
+// Load logs on page load
+loadLogs();
+
+// Handle log container scroll
+document.getElementById('logContainer').addEventListener('scroll', function() {
+    const container = this;
+    const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 10;
+    logAutoScroll = isAtBottom;
+});
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', function() {
+    if (logUpdateInterval) {
+        clearInterval(logUpdateInterval);
+    }
+});
+
+// Initialize params on page load - ensure SQL Warehouses is default
+function initializeDefaults() {
+    const categorySelect = document.getElementById('apiCategory');
+    const actionSelect = document.getElementById('apiAction');
+    
+    if (categorySelect && actionSelect) {
+        // Set category to SQL Warehouses
+        categorySelect.value = 'sql';
+        
+        // Update actions for SQL category with list-warehouses selected
+        actionSelect.innerHTML = '<option value="list-warehouses" selected>List Warehouses</option><option value="get-warehouse">Get Warehouse</option>';
+        
+        // Ensure action is set to list-warehouses
+        actionSelect.value = 'list-warehouses';
+        
+        // Update params (no params needed for list-warehouses)
+        updateParams();
+    }
+}
+
+// Run initialization when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeDefaults);
+} else {
+    // DOM is already ready
+    initializeDefaults();
+}
+
+// Make sure callApi is accessible globally
+window.callApi = callApi;
+</script>
+{% endblock %}
+
